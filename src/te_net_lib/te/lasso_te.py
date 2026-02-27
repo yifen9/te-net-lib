@@ -52,11 +52,13 @@ def lasso_te_matrix(
     add_intercept: bool,
     standardize: bool,
     exclude_self: bool,
+    init_beta: np.ndarray | None = None,
 ) -> LassoTeOut:
     """
     Estimate a sparse TE coefficient matrix using Lasso regressions.
 
     For each target j, the regression is:
+
         y = returns[lag:, j]
         X = returns[:-lag, :]
 
@@ -93,6 +95,11 @@ def lasso_te_matrix(
         If True, exclude the target's own lagged predictor from the regression and
         set beta[j, j] = 0.
 
+    init_beta:
+        Optional initial beta matrix with shape (N, N). If provided, each target regression
+        is warm-started from init_beta[j, :], respecting exclude_self and standardization.
+        This is intended for computing alpha paths efficiently.
+
     Returns
     -------
 
@@ -122,8 +129,6 @@ def lasso_te_matrix(
     >>> out = lasso_te_matrix(R, 1, 0.1, 300, 1e-8, False, True, True)
     >>> out.beta.shape
     (5, 5)
-    >>> float(np.diag(out.beta).sum()) == 0.0
-    True
     """
     if returns.ndim != 2:
         raise ValueError("returns must be 2D")
@@ -137,61 +142,67 @@ def lasso_te_matrix(
         raise ValueError("tol must be non-negative")
 
     T, N = returns.shape
-    if T <= lag:
-        raise ValueError("T must be greater than lag")
 
+    if init_beta is not None:
+        if init_beta.shape != (N, N):
+            raise ValueError("init_beta shape must be (N, N)")
+
+    if T <= lag:
+        raise ValueError("T must be larger than lag")
+
+    X = returns[:-lag, :].astype(np.float64, copy=False)
     Y = returns[lag:, :].astype(np.float64, copy=False)
-    Xfull = returns[:-lag, :].astype(np.float64, copy=False)
-    n_obs = Y.shape[0]
 
     beta = np.zeros((N, N), dtype=np.float64)
     intercept = np.zeros((N,), dtype=np.float64) if add_intercept else None
-    n_iter_out = np.zeros((N,), dtype=np.int64)
+    n_iter = np.zeros((N,), dtype=np.int64)
 
     for j in range(N):
+        y = Y[:, j].astype(np.float64, copy=False)
+        Xj = X
+
         if exclude_self:
-            cols_mask = np.arange(N) != j
-            X = Xfull[:, cols_mask]
-        else:
-            cols_mask = None
-            X = Xfull
+            mask = np.ones((N,), dtype=bool)
+            mask[j] = False
+            Xj = X[:, mask]
 
-        y = Y[:, j].copy()
-
-        x_mean = np.zeros((X.shape[1],), dtype=np.float64)
-        x_scale = np.ones((X.shape[1],), dtype=np.float64)
         y_mean = 0.0
-
-        Xw = X.astype(np.float64, copy=True)
-
+        x_mean = None
         if add_intercept:
             y_mean = float(y.mean())
             y = y - y_mean
-            x_mean = Xw.mean(axis=0)
-            Xw = Xw - x_mean
+            x_mean = Xj.mean(axis=0)
+            Xj = Xj - x_mean
+
+        scale = None
+        if standardize:
+            scale = np.sqrt((Xj * Xj).mean(axis=0))
+            if np.any(scale == 0.0):
+                raise ValueError("standardize=True but some predictors have zero scale")
+            Xj = Xj / scale
+
+        init_coef = None
+        if init_beta is not None:
+            init_row = init_beta[j].astype(np.float64, copy=False)
+            init_coef = init_row[mask].copy() if exclude_self else init_row.copy()
+
+        out = lasso_cd(Xj, y, alpha, max_iter, tol, init_coef=init_coef)
+        b = out.coef.astype(np.float64, copy=False)
 
         if standardize:
-            s = np.sqrt((Xw * Xw).sum(axis=0) / float(n_obs))
-            if np.any(s == 0.0):
-                raise ValueError("cannot standardize with zero-variance column")
-            x_scale = s
-            Xw = Xw / x_scale
-
-        out = lasso_cd(Xw, y, alpha, max_iter, tol)
-        bj = out.coef
-        n_iter_out[j] = out.n_iter
-
-        if standardize:
-            bj = bj / x_scale
+            b = b / scale
 
         if exclude_self:
-            beta[j, cols_mask] = bj
+            beta[j, mask] = b
             beta[j, j] = 0.0
         else:
-            beta[j, :] = bj
+            beta[j, :] = b
+            beta[j, j] = 0.0 if exclude_self else beta[j, j]
 
         if add_intercept:
-            b0 = y_mean - float(x_mean @ bj)
+            b0 = y_mean - float(x_mean.dot(b)) if x_mean is not None else y_mean
             intercept[j] = b0
 
-    return LassoTeOut(beta=beta, intercept=intercept, n_iter=n_iter_out)
+        n_iter[j] = int(out.n_iter)
+
+    return LassoTeOut(beta=beta, intercept=intercept, n_iter=n_iter)

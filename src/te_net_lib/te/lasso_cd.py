@@ -56,14 +56,14 @@ class LassoCdOut:
     n_iter:
         Number of coordinate-descent passes performed.
 
-    max_delta:
-        Maximum absolute coefficient update in the final iteration.
+    max_update:
+        Maximum absolute coefficient update at termination.
 
     """
 
     coef: np.ndarray
     n_iter: int
-    max_delta: float
+    max_update: float
 
 
 def lasso_cd(
@@ -72,6 +72,7 @@ def lasso_cd(
     alpha: float,
     max_iter: int,
     tol: float,
+    init_coef: np.ndarray | None = None,
 ) -> LassoCdOut:
     """
     Solve a Lasso regression problem using coordinate descent.
@@ -99,6 +100,10 @@ def lasso_cd(
 
     tol:
         Convergence tolerance on the maximum absolute coefficient update.
+
+    init_coef:
+        Optional initial coefficient vector with shape (p,). If provided, coordinate descent
+        starts from this vector (warm start). Ignored when alpha == 0.
 
     Returns
     -------
@@ -142,40 +147,55 @@ def lasso_cd(
     if tol < 0.0:
         raise ValueError("tol must be non-negative")
 
+    if init_coef is not None:
+        if init_coef.ndim != 1:
+            raise ValueError("init_coef must be 1D")
+        if init_coef.shape[0] != p:
+            raise ValueError("init_coef must have shape (p,)")
+
     Xf = X.astype(np.float64, copy=False)
     yf = y.astype(np.float64, copy=False)
 
-    if alpha == 0.0:
-        coef, residuals, rank, s = np.linalg.lstsq(Xf, yf, rcond=None)
+    if p == 0:
         return LassoCdOut(
-            coef=coef.astype(np.float64, copy=False), n_iter=1, max_delta=0.0
+            coef=np.zeros((0,), dtype=np.float64), n_iter=0, max_update=0.0
         )
 
+    if alpha == 0.0:
+        coef = np.linalg.lstsq(Xf, yf, rcond=None)[0].astype(np.float64, copy=False)
+        return LassoCdOut(coef=coef, n_iter=1, max_update=0.0)
+
     z = (Xf * Xf).sum(axis=0) / float(n)
-    if np.any(z <= 0.0):
-        raise ValueError("columns of X must have nonzero variance")
+    if np.any(z == 0.0):
+        raise ValueError("X must have nonzero variance columns when alpha > 0")
 
-    b = np.zeros((p,), dtype=np.float64)
-    r = yf.copy()
+    b = (
+        init_coef.astype(np.float64, copy=True)
+        if init_coef is not None
+        else np.zeros(p, dtype=np.float64)
+    )
+    r = yf - Xf @ b
 
-    it = 0
-    max_delta = 0.0
+    max_update = 0.0
+    n_iter = 0
 
-    for it in range(1, max_iter + 1):
-        max_delta = 0.0
+    for it in range(max_iter):
+        max_update = 0.0
         for j in range(p):
-            xj = Xf[:, j]
-            bj_old = b[j]
-            rho = (xj @ (r + bj_old * xj)) / float(n)
-            bj_new = soft_threshold(float(rho), float(alpha)) / float(z[j])
-            delta = bj_new - bj_old
-            if delta != 0.0:
-                r -= delta * xj
-                b[j] = bj_new
-                ad = abs(delta)
-                if ad > max_delta:
-                    max_delta = ad
-        if max_delta <= tol:
+            bj_old = float(b[j])
+            if bj_old != 0.0:
+                r = r + Xf[:, j] * bj_old
+            rho = float(Xf[:, j].dot(r) / float(n))
+            bj_new = soft_threshold(rho, alpha) / float(z[j])
+            b[j] = bj_new
+            if bj_new != 0.0:
+                r = r - Xf[:, j] * bj_new
+            upd = abs(bj_new - bj_old)
+            if upd > max_update:
+                max_update = upd
+
+        n_iter = it + 1
+        if max_update <= tol:
             break
 
-    return LassoCdOut(coef=b, n_iter=int(it), max_delta=float(max_delta))
+    return LassoCdOut(coef=b, n_iter=n_iter, max_update=float(max_update))

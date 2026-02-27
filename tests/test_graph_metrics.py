@@ -25,10 +25,11 @@ def test_in_out_degree():
     A[0, 2] = 1
     A[3, 2] = 1
     indeg, outdeg = in_out_degree(A, True)
-    assert int(outdeg[0]) == 2
-    assert int(indeg[2]) == 2
-    assert int(indeg[1]) == 1
-    assert int(outdeg[3]) == 1
+
+    assert int(outdeg[2]) == 2
+    assert int(outdeg[1]) == 1
+    assert int(indeg[0]) == 2
+    assert int(indeg[3]) == 1
 
 
 def test_hub_indices():
@@ -38,9 +39,9 @@ def test_hub_indices():
     A[0, 2] = 1
     A[0, 3] = 1
     A[4, 2] = 1
-    top = hub_indices(A, 2, "out", True)
+    top = hub_indices(A, 2, True)
     assert top.shape == (2,)
-    assert int(top[0]) == 0
+    assert int(top[0]) == 2
 
 
 def test_precision_recall_f1():

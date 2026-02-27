@@ -54,6 +54,7 @@ def lasso_te_path(
     add_intercept: bool,
     standardize: bool,
     exclude_self: bool,
+    warm_start: bool = True,
 ) -> LassoPathOut:
     """
     Compute a Lasso TE coefficient path over a user-provided alpha grid.
@@ -88,6 +89,9 @@ def lasso_te_path(
 
     exclude_self:
         If True, exclude self-lag regressors and enforce diagonal zeros.
+
+    warm_start:
+        If True, warm-start each alpha from the previous alpha's solution.
 
     Returns
     -------
@@ -137,6 +141,7 @@ def lasso_te_path(
             add_intercept,
             standardize,
             exclude_self,
+            init_beta=betas[i - 1] if (warm_start and i > 0) else None,
         )
         betas[i] = out.beta
         n_iters[i] = out.n_iter

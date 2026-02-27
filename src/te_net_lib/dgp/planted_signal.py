@@ -24,7 +24,7 @@ def simulate_planted_signal_var(
     The adjacency is sampled i.i.d. Bernoulli(edge_prob) off-diagonal. Coefficients
     are constructed by:
 
-    - normalizing each row by out-degree (with protection for zero out-degree)
+    - normalizing each column by out-degree (with protection for zero out-degree)
     - scaling by `coef_strength`
     - applying random +/- signs
 
@@ -101,10 +101,10 @@ def simulate_planted_signal_var(
     adj = (rng.random(size=(N, N)) < edge_prob).astype(np.int8)
     np.fill_diagonal(adj, 0)
 
-    out_deg = adj.sum(axis=1).astype(np.float64)
+    out_deg = adj.sum(axis=0).astype(np.float64)
     denom = np.maximum(out_deg, 1.0)
 
-    A = (coef_strength * (adj.astype(np.float64) / denom[:, None])).astype(np.float64)
+    A = (coef_strength * (adj.astype(np.float64) / denom[None, :])).astype(np.float64)
     sign = rng.choice(np.array([-1.0, 1.0]), size=(N, N))
     A = A * sign
     np.fill_diagonal(A, 0.0)

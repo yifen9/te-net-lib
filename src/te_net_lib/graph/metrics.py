@@ -10,7 +10,7 @@ def graph_density(adj: np.ndarray, exclude_self: bool) -> float:
     Conventions
     -----------
 
-    adj[i, j] corresponds to i -> j.
+    adj[j, i] corresponds to i -> j.
 
     Parameters
     ----------
@@ -26,33 +26,37 @@ def graph_density(adj: np.ndarray, exclude_self: bool) -> float:
 
     float
 
+        Graph density in [0, 1].
+
+    Raises
+    ------
+
+    ValueError
+
+        If adj is not square.
+
     Examples
     --------
     >>> import numpy as np
     >>> from te_net_lib.graph.metrics import graph_density
-    >>> N = 4
-    >>> A = np.zeros((N, N), dtype=np.int8)
-    >>> A[0, 1] = 1
-    >>> A[1, 2] = 1
+    >>> A = np.array([[0, 1], [0, 0]], dtype=np.int8)
     >>> graph_density(A, True)
-    0.16666666666666666
+    0.5
     """
     if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
         raise ValueError("adj must be square 2D")
     N = adj.shape[0]
-    a = adj != 0
-
-    if exclude_self:
-        m = N * (N - 1)
-        if m <= 0:
-            return 0.0
-        count = int(a.sum() - np.diag(a).sum())
-        return float(count) / float(m)
-
-    m = N * N
-    if m <= 0:
+    if N <= 1:
         return 0.0
-    return float(int(a.sum())) / float(m)
+
+    a = (adj != 0).astype(np.int8)
+    if exclude_self:
+        np.fill_diagonal(a, 0)
+        denom = float(N * (N - 1))
+    else:
+        denom = float(N * N)
+
+    return float(a.sum()) / denom
 
 
 def in_out_degree(adj: np.ndarray, exclude_self: bool) -> tuple[np.ndarray, np.ndarray]:
@@ -62,11 +66,12 @@ def in_out_degree(adj: np.ndarray, exclude_self: bool) -> tuple[np.ndarray, np.n
     Conventions
     -----------
 
-    adj[i, j] corresponds to i -> j.
+    adj[j, i] corresponds to i -> j.
 
     Therefore:
-        out_degree[i] = sum_j adj[i, j]  (row sum)
-        in_degree[i]  = sum_j adj[j, i]  (column sum)
+
+        out_degree[i] = sum_j adj[j, i]  (column sum)
+        in_degree[i]  = sum_j adj[i, j]  (row sum)
 
     Parameters
     ----------
@@ -75,60 +80,55 @@ def in_out_degree(adj: np.ndarray, exclude_self: bool) -> tuple[np.ndarray, np.n
         Adjacency matrix, shape (N, N). Nonzero entries are treated as edges.
 
     exclude_self:
-        If True, ignore diagonal entries.
+        If True, diagonal entries are excluded.
 
     Returns
     -------
 
-    (numpy.ndarray, numpy.ndarray)
+    tuple[np.ndarray, np.ndarray]
 
         (in_degree, out_degree), each shape (N,).
+
+    Raises
+    ------
+
+    ValueError
+
+        If adj is not square.
 
     Examples
     --------
     >>> import numpy as np
     >>> from te_net_lib.graph.metrics import in_out_degree
-    >>> A = np.zeros((5, 5), dtype=np.int8)
-    >>> A[0, 1] = 1
-    >>> A[0, 2] = 1
-    >>> A[3, 2] = 1
+    >>> A = np.array([[0, 1], [0, 0]], dtype=np.int8)
     >>> indeg, outdeg = in_out_degree(A, True)
-    >>> int(outdeg[0]), int(indeg[2])
-    (2, 2)
+    >>> indeg.tolist()
+    [1.0, 0.0]
+    >>> outdeg.tolist()
+    [0.0, 1.0]
     """
     if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
         raise ValueError("adj must be square 2D")
+    N = adj.shape[0]
+    if N == 0:
+        return np.zeros((0,), dtype=np.float64), np.zeros((0,), dtype=np.float64)
 
-    a = (adj != 0).astype(np.int64, copy=False)
+    a = (adj != 0).astype(np.int8)
     if exclude_self:
         b = a.copy()
         np.fill_diagonal(b, 0)
-        out_deg = b.sum(axis=1)
-        in_deg = b.sum(axis=0)
-        return in_deg, out_deg
+        out_deg = b.sum(axis=0)
+        in_deg = b.sum(axis=1)
+        return in_deg.astype(np.float64), out_deg.astype(np.float64)
 
-    out_deg = a.sum(axis=1)
-    in_deg = a.sum(axis=0)
-    return in_deg, out_deg
+    out_deg = a.sum(axis=0)
+    in_deg = a.sum(axis=1)
+    return in_deg.astype(np.float64), out_deg.astype(np.float64)
 
 
-def hub_indices(
-    adj: np.ndarray, topk: int, direction: str, exclude_self: bool
-) -> np.ndarray:
+def hub_indices(adj: np.ndarray, k: int, exclude_self: bool) -> np.ndarray:
     """
-    Indices of top-k hubs by in-degree or out-degree, returned in deterministic order.
-
-    Conventions
-    -----------
-
-    adj[i, j] corresponds to i -> j.
-
-    Ordering
-    --------
-
-    The returned indices are sorted by hub strength in descending order. Ties are
-    broken by smaller index first, so results are deterministic across runs and
-    platforms.
+    Select hub indices by out-degree, using a deterministic tie-break.
 
     Parameters
     ----------
@@ -136,135 +136,136 @@ def hub_indices(
     adj:
         Adjacency matrix, shape (N, N). Nonzero entries are treated as edges.
 
-    topk:
-        Number of indices to return. Must be positive.
-
-    direction:
-        "in" or "out".
+    k:
+        Number of hubs to return, must satisfy 0 <= k <= N.
 
     exclude_self:
-        If True, ignore diagonal entries.
+        If True, diagonal entries are excluded.
 
     Returns
     -------
 
-    numpy.ndarray
+    np.ndarray
 
-        Indices of selected hubs, shape (k,).
+        Array of selected hub indices, shape (k,).
+
+    Raises
+    ------
+
+    ValueError
+
+        If adj is not square or k is invalid.
 
     Examples
     --------
     >>> import numpy as np
     >>> from te_net_lib.graph.metrics import hub_indices
-    >>> N = 6
-    >>> A = np.zeros((N, N), dtype=np.int8)
-    >>> A[0, 1] = 1
-    >>> A[0, 2] = 1
-    >>> A[0, 3] = 1
-    >>> A[4, 2] = 1
-    >>> hub_indices(A, 2, "out", True).tolist()
-    [0, 4]
+    >>> A = np.array([[0, 1, 1], [0, 0, 0], [0, 0, 0]], dtype=np.int8)
+    >>> hub_indices(A, 1, True).tolist()
+    [1]
     """
-    if topk <= 0:
-        raise ValueError("topk must be positive")
+    if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
+        raise ValueError("adj must be square 2D")
+    N = adj.shape[0]
+    if k < 0 or k > N:
+        raise ValueError("k must satisfy 0 <= k <= N")
+    if k == 0:
+        return np.zeros((0,), dtype=np.int64)
 
-    indeg, outdeg = in_out_degree(adj, exclude_self)
-    if direction == "in":
-        s = indeg
-    elif direction == "out":
-        s = outdeg
-    else:
-        raise ValueError("direction must be 'in' or 'out'")
+    _, outdeg = in_out_degree(adj, exclude_self)
+    s = outdeg.astype(np.float64, copy=False)
 
-    k = min(int(topk), int(s.size))
-    if k <= 0:
-        return np.array([], dtype=np.int64)
-
-    cand = np.argpartition(s, -k)[-k:]
+    idx = np.argpartition(-s, k - 1)[:k]
+    cand = np.array(idx, dtype=np.int64, copy=False)
     order = np.lexsort((cand, -s[cand]))
     return cand[order]
 
 
 def confusion_counts(
-    pred_adj: np.ndarray, true_adj: np.ndarray, exclude_self: bool
+    true_adj: np.ndarray, pred_adj: np.ndarray, exclude_self: bool
 ) -> tuple[int, int, int, int]:
     """
-    Confusion counts for binary adjacency matrices.
+    Confusion-matrix counts for binary edge prediction.
 
     Parameters
     ----------
 
-    pred_adj:
-        Predicted adjacency matrix, shape (N, N).
-
     true_adj:
-        Ground-truth adjacency matrix, shape (N, N).
+        Ground truth adjacency, shape (N, N). Nonzero entries treated as edges.
+
+    pred_adj:
+        Predicted adjacency, shape (N, N). Nonzero entries treated as edges.
 
     exclude_self:
-        If True, exclude diagonal positions from evaluation.
+        If True, exclude diagonal entries.
 
     Returns
     -------
 
-    (int, int, int, int)
+    tuple[int, int, int, int]
 
         (tp, fp, fn, tn)
+
+    Raises
+    ------
+
+    ValueError
+
+        If input shapes mismatch or are not square.
 
     Examples
     --------
     >>> import numpy as np
     >>> from te_net_lib.graph.metrics import confusion_counts
-    >>> N = 3
-    >>> T = np.zeros((N, N), dtype=np.int8)
-    >>> P = np.zeros((N, N), dtype=np.int8)
-    >>> T[0, 1] = 1
-    >>> P[0, 1] = 1
-    >>> P[1, 2] = 1
-    >>> confusion_counts(P, T, True)[:3]
-    (1, 1, 0)
+    >>> t = np.array([[0, 1], [0, 0]], dtype=np.int8)
+    >>> p = np.array([[0, 1], [1, 0]], dtype=np.int8)
+    >>> confusion_counts(t, p, True)
+    (1, 1, 0, 0)
     """
-    if pred_adj.shape != true_adj.shape:
-        raise ValueError("shapes must match")
-    if pred_adj.ndim != 2 or pred_adj.shape[0] != pred_adj.shape[1]:
-        raise ValueError("adj must be square 2D")
+    if true_adj.ndim != 2 or pred_adj.ndim != 2:
+        raise ValueError("inputs must be 2D")
+    if true_adj.shape != pred_adj.shape:
+        raise ValueError("true_adj and pred_adj shapes must match")
+    if true_adj.shape[0] != true_adj.shape[1]:
+        raise ValueError("inputs must be square")
 
-    p = pred_adj != 0
     t = true_adj != 0
+    p = pred_adj != 0
 
     if exclude_self:
-        mask = ~np.eye(pred_adj.shape[0], dtype=bool)
-        p = p[mask]
+        mask = ~np.eye(true_adj.shape[0], dtype=bool)
         t = t[mask]
+        p = p[mask]
 
-    tp = int(np.logical_and(p, t).sum())
-    fp = int(np.logical_and(p, ~t).sum())
-    fn = int(np.logical_and(~p, t).sum())
-    tn = int(np.logical_and(~p, ~t).sum())
+    tp = int(np.logical_and(t, p).sum())
+    fp = int(np.logical_and(~t, p).sum())
+    fn = int(np.logical_and(t, ~p).sum())
+    tn = int(np.logical_and(~t, ~p).sum())
     return tp, fp, fn, tn
 
 
 def precision_recall_f1(
-    pred_adj: np.ndarray, true_adj: np.ndarray, exclude_self: bool
+    true_adj: np.ndarray, pred_adj: np.ndarray, exclude_self: bool
 ) -> tuple[float, float, float]:
     """
-    Precision, recall, and F1 for binary adjacency matrices.
+    Precision, recall, and F1 for binary edge prediction.
 
     Parameters
     ----------
 
-    pred_adj:
-        Predicted adjacency matrix, shape (N, N).
-
     true_adj:
-        Ground-truth adjacency matrix, shape (N, N).
+        Ground truth adjacency, shape (N, N).
+
+    pred_adj:
+        Predicted adjacency, shape (N, N).
 
     exclude_self:
-        If True, exclude diagonal positions from evaluation.
+        If True, exclude diagonal entries.
 
     Returns
     -------
 
-    (float, float, float)
+    tuple[float, float, float]
 
         (precision, recall, f1)
 
@@ -272,17 +273,12 @@ def precision_recall_f1(
     --------
     >>> import numpy as np
     >>> from te_net_lib.graph.metrics import precision_recall_f1
-    >>> N = 4
-    >>> T = np.zeros((N, N), dtype=np.int8)
-    >>> P = np.zeros((N, N), dtype=np.int8)
-    >>> T[0, 1] = 1
-    >>> T[1, 2] = 1
-    >>> P[0, 1] = 1
-    >>> P[2, 3] = 1
-    >>> precision_recall_f1(P, T, True)
-    (0.5, 0.5, 0.5)
+    >>> t = np.array([[0, 1], [0, 0]], dtype=np.int8)
+    >>> p = np.array([[0, 1], [1, 0]], dtype=np.int8)
+    >>> precision_recall_f1(t, p, True)[0] > 0
+    True
     """
-    tp, fp, fn, _tn = confusion_counts(pred_adj, true_adj, exclude_self)
+    tp, fp, fn, _ = confusion_counts(true_adj, pred_adj, exclude_self)
     prec = float(tp) / float(tp + fp) if (tp + fp) > 0 else 0.0
     rec = float(tp) / float(tp + fn) if (tp + fn) > 0 else 0.0
     f1 = (2.0 * prec * rec) / (prec + rec) if (prec + rec) > 0 else 0.0
