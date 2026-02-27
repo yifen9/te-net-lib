@@ -9,6 +9,35 @@ from te_net_lib.te.lasso_cd import lasso_cd
 
 @dataclass(frozen=True, slots=True)
 class LassoTeOut:
+    """
+    Output of Lasso-based TE estimation (per-target sparse regression).
+
+    Attributes
+    ----------
+
+    beta:
+        Coefficient matrix with shape (N, N). Entry beta[j, i] corresponds to i -> j.
+        When `exclude_self=True`, the diagonal is forced to zero.
+
+    intercept:
+        Optional intercept vector with shape (N,). Present if `add_intercept=True`.
+
+    n_iter:
+        Number of coordinate-descent passes used for each target regression, shape (N,).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.te.lasso_te import lasso_te_matrix
+    >>> g = np.random.default_rng(0)
+    >>> R = g.normal(size=(200, 6)).astype(np.float64)
+    >>> out = lasso_te_matrix(R, 1, 0.05, 500, 1e-8, True, True, True)
+    >>> out.beta.shape
+    (6, 6)
+    >>> out.n_iter.shape
+    (6,)
+    """
+
     beta: np.ndarray
     intercept: np.ndarray | None
     n_iter: np.ndarray
@@ -24,6 +53,78 @@ def lasso_te_matrix(
     standardize: bool,
     exclude_self: bool,
 ) -> LassoTeOut:
+    """
+    Estimate a sparse TE coefficient matrix using Lasso regressions.
+
+    For each target j, the regression is:
+        y = returns[lag:, j]
+        X = returns[:-lag, :]
+
+    with optional intercept removal and optional column standardization. The fitted
+    coefficients are assembled into a matrix beta such that beta[j, i] corresponds
+    to i -> j.
+
+    Parameters
+    ----------
+
+    returns:
+        Return panel with shape (T, N).
+
+    lag:
+        Positive lag used to define predictors X and targets Y.
+
+    alpha:
+        L1 penalty strength passed to the per-target Lasso solver.
+
+    max_iter:
+        Maximum coordinate-descent passes per target regression.
+
+    tol:
+        Convergence tolerance on maximum absolute coefficient update.
+
+    add_intercept:
+        If True, center y and X per target and return an intercept term.
+
+    standardize:
+        If True, scale each predictor column to have RMS 1 within the regression
+        after optional centering, then rescale coefficients back.
+
+    exclude_self:
+        If True, exclude the target's own lagged predictor from the regression and
+        set beta[j, j] = 0.
+
+    Returns
+    -------
+
+    LassoTeOut
+
+        Dataclass containing beta, optional intercept, and per-target iteration counts.
+
+    Raises
+    ------
+
+    ValueError
+
+        If input shapes or parameter constraints are violated.
+
+    Notes
+    -----
+
+    Direction convention:
+        beta[j, i] represents i -> j.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.te.lasso_te import lasso_te_matrix
+    >>> g = np.random.default_rng(1)
+    >>> R = g.normal(size=(150, 5)).astype(np.float64)
+    >>> out = lasso_te_matrix(R, 1, 0.1, 300, 1e-8, False, True, True)
+    >>> out.beta.shape
+    (5, 5)
+    >>> float(np.diag(out.beta).sum()) == 0.0
+    True
+    """
     if returns.ndim != 2:
         raise ValueError("returns must be 2D")
     if lag <= 0:

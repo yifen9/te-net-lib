@@ -14,6 +14,85 @@ def simulate_planted_signal_var(
     noise_scale: float,
     burnin: int,
 ) -> DgpSample:
+    """
+    Simulate a VAR(1) process with a randomly planted directed graph (ground truth).
+
+    This is intended for power/edge-recovery experiments where a "true" adjacency
+    is available. The process is:
+        x_t = A x_{t-1} + eps_t
+
+    The adjacency is sampled i.i.d. Bernoulli(edge_prob) off-diagonal. Coefficients
+    are constructed by:
+
+    - normalizing each row by out-degree (with protection for zero out-degree)
+    - scaling by `coef_strength`
+    - applying random +/- signs
+
+    Self-edges are always removed.
+
+    Parameters
+    ----------
+
+    rng:
+        NumPy Generator used to sample the adjacency, signs, and innovations.
+
+    N:
+        Number of nodes/assets.
+
+    T:
+        Number of returned time steps after burn-in.
+
+    edge_prob:
+        Probability of an off-diagonal edge (must be in [0, 1]).
+
+    coef_strength:
+        Global scaling for realized VAR coefficients.
+
+    noise_scale:
+        Standard deviation of Gaussian innovations.
+
+    burnin:
+        Number of initial steps discarded.
+
+    Returns
+    -------
+
+    DgpSample
+
+    A sample with:
+
+    - returns: array with shape (T, N)
+    - true_adj: planted adjacency with shape (N, N) and entries in {0, 1}
+    - extras: dict containing "A" (the realized coefficient matrix) and "edge_prob"
+
+    Raises
+    ------
+
+    ValueError
+
+        If `edge_prob` is outside [0, 1] or `burnin` is negative.
+
+    Notes
+    -----
+
+    Direction convention:
+        true_adj[j, i] == 1 indicates i -> j (i influences j).
+
+    This matches the TE coefficient layout used throughout the library.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.dgp.planted_signal import simulate_planted_signal_var
+    >>> g = np.random.default_rng(0)
+    >>> out = simulate_planted_signal_var(g, 5, 40, 0.2, 0.4, 1.0, 10)
+    >>> out.returns.shape
+    (40, 5)
+    >>> out.true_adj.shape
+    (5, 5)
+    >>> int(np.diag(out.true_adj).sum())
+    0
+    """
     if not (0.0 <= edge_prob <= 1.0):
         raise ValueError("edge_prob must be in [0, 1]")
     if burnin < 0:

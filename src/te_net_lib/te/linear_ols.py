@@ -7,6 +7,50 @@ import numpy as np
 
 @dataclass(frozen=True, slots=True)
 class LinearOlsTeOut:
+    """
+    Output of linear OLS TE estimation for a VAR-style regression.
+
+    Attributes
+    ----------
+
+    beta:
+        Coefficient matrix with shape (N, N). Entry beta[j, i] corresponds to the
+        estimated influence i -> j using lagged returns as regressors.
+
+    intercept:
+        Optional intercept vector with shape (N,). Present if `add_intercept=True`.
+
+    resid_var:
+        Residual variance estimate per target series, shape (N,). Variance is computed
+        as SSE / dof for each regression.
+
+    dof:
+        A degrees-of-freedom value intended as a summary for the run.
+
+    Notes
+    -----
+    This estimator performs N separate regressions, one for each target j:
+        y_j = r_{t, j}
+        X = r_{t-lag, :}
+
+    If `exclude_self=True`, the j-th regressor column is removed for the j-th regression
+    and beta[j, j] is set to 0.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.te.linear_ols import ols_te_matrix
+    >>> g = np.random.default_rng(0)
+    >>> R = g.normal(size=(120, 5)).astype(np.float64)
+    >>> out = ols_te_matrix(R, 1, True, True)
+    >>> out.beta.shape
+    (5, 5)
+    >>> out.intercept.shape
+    (5,)
+    >>> float(np.diag(out.beta).sum()) == 0.0
+    True
+    """
+
     beta: np.ndarray
     intercept: np.ndarray | None
     resid_var: np.ndarray
@@ -19,6 +63,55 @@ def ols_te_matrix(
     add_intercept: bool,
     exclude_self: bool,
 ) -> LinearOlsTeOut:
+    """
+    Estimate a linear TE coefficient matrix via per-node OLS regressions.
+
+    Parameters
+    ----------
+
+    returns:
+        Return panel with shape (T, N).
+
+    lag:
+        Positive lag used to build the predictor matrix X = returns[:-lag].
+
+    add_intercept:
+        If True, include an intercept in each per-target regression.
+
+    exclude_self:
+        If True, exclude the target's own lagged series from its regression and set
+        the diagonal coefficients to zero.
+
+    Returns
+    -------
+
+    LinearOlsTeOut
+
+        Dataclass containing beta, optional intercept, residual variances, and dof.
+
+    Raises
+    ------
+
+    ValueError
+
+        If `returns` is not 2D, `lag` is not positive, or T <= lag, or dof <= 0.
+
+    Notes
+    -----
+
+    Direction convention:
+        beta[j, i] represents i -> j.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.te.linear_ols import ols_te_matrix
+    >>> g = np.random.default_rng(1)
+    >>> R = g.normal(size=(60, 4)).astype(np.float64)
+    >>> out = ols_te_matrix(R, 1, False, False)
+    >>> out.beta.shape
+    (4, 4)
+    """
     if returns.ndim != 2:
         raise ValueError("returns must be 2D")
     if lag <= 0:

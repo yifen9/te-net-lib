@@ -55,7 +55,7 @@ ci:
     just test
 
 docs-build:
-	uv run pdoc -o site te_net_lib
+	uv run pdoc --math -o site te_net_lib
 
 docs-serve:
-    uv run pdoc -p 8080 te_net_lib
+    uv run pdoc --math -p 8080 te_net_lib

@@ -4,6 +4,35 @@ import numpy as np
 
 
 def graph_density(adj: np.ndarray, exclude_self: bool) -> float:
+    """
+    Compute directed graph density for a binary adjacency matrix.
+
+    Parameters
+    ----------
+
+    adj:
+        Adjacency matrix with shape (N, N). Nonzero entries are treated as edges.
+
+    exclude_self:
+        If True, exclude diagonal positions from both numerator and denominator.
+
+    Returns
+    -------
+
+    float
+
+        Density in [0, 1]. For exclude_self=True, denominator is N*(N-1); otherwise N*N.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.graph.metrics import graph_density
+    >>> A = np.zeros((4, 4), dtype=np.int8)
+    >>> A[0, 1] = 1
+    >>> A[1, 2] = 1
+    >>> abs(graph_density(A, True) - (2.0 / (4 * 3))) < 1e-12
+    True
+    """
     if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
         raise ValueError("adj must be square 2D")
     N = adj.shape[0]
@@ -21,6 +50,38 @@ def graph_density(adj: np.ndarray, exclude_self: bool) -> float:
 
 
 def in_out_degree(adj: np.ndarray, exclude_self: bool) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute in-degree and out-degree vectors for a directed adjacency matrix.
+
+    Parameters
+    ----------
+
+    adj:
+        Adjacency matrix with shape (N, N). Nonzero entries are treated as edges.
+        Entry adj[j, i] corresponds to i -> j.
+
+    exclude_self:
+        If True, ignore diagonal entries.
+
+    Returns
+    -------
+
+    (numpy.ndarray, numpy.ndarray)
+
+        (in_degree, out_degree), each with shape (N,).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.graph.metrics import in_out_degree
+    >>> A = np.zeros((5, 5), dtype=np.int8)
+    >>> A[0, 1] = 1
+    >>> A[0, 2] = 1
+    >>> A[3, 2] = 1
+    >>> indeg, outdeg = in_out_degree(A, True)
+    >>> int(outdeg[0]), int(indeg[2])
+    (2, 2)
+    """
     if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
         raise ValueError("adj must be square 2D")
     a = (adj != 0).astype(np.int64, copy=False)
@@ -34,6 +95,43 @@ def in_out_degree(adj: np.ndarray, exclude_self: bool) -> tuple[np.ndarray, np.n
 def hub_indices(
     adj: np.ndarray, topk: int, direction: str, exclude_self: bool
 ) -> np.ndarray:
+    """
+    Return indices of top-k hubs by in-degree or out-degree.
+
+    Parameters
+    ----------
+
+    adj:
+        Adjacency matrix with shape (N, N).
+
+    topk:
+        Number of indices to return. If 0, returns an empty array.
+
+    direction:
+        "in" to rank by in-degree, "out" to rank by out-degree.
+
+    exclude_self:
+        If True, ignore diagonal entries.
+
+    Returns
+    -------
+
+    numpy.ndarray
+
+        Array of node indices with shape (k,), sorted by descending degree.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.graph.metrics import hub_indices
+    >>> A = np.zeros((6, 6), dtype=np.int8)
+    >>> A[0, 1] = 1
+    >>> A[0, 2] = 1
+    >>> A[0, 3] = 1
+    >>> top = hub_indices(A, 2, "out", True)
+    >>> int(top[0]) == 0
+    True
+    """
     if topk < 0:
         raise ValueError("topk must be non-negative")
     if direction not in ("in", "out"):
@@ -52,6 +150,41 @@ def hub_indices(
 def confusion_counts(
     pred_adj: np.ndarray, true_adj: np.ndarray, exclude_self: bool
 ) -> tuple[int, int, int, int]:
+    """
+    Compute confusion-matrix counts between a predicted and true adjacency matrix.
+
+    Parameters
+    ----------
+
+    pred_adj:
+        Predicted adjacency with shape (N, N). Nonzero entries are treated as edges.
+
+    true_adj:
+        Ground-truth adjacency with shape (N, N). Nonzero entries are treated as edges.
+
+    exclude_self:
+        If True, ignore diagonal entries in both matrices.
+
+    Returns
+    -------
+
+    (int, int, int, int)
+
+        (tp, fp, fn, tn) counts.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.graph.metrics import confusion_counts
+    >>> T = np.zeros((4, 4), dtype=np.int8)
+    >>> P = np.zeros((4, 4), dtype=np.int8)
+    >>> T[0, 1] = 1
+    >>> T[1, 2] = 1
+    >>> P[0, 1] = 1
+    >>> P[2, 3] = 1
+    >>> confusion_counts(P, T, True)[:3]
+    (1, 1, 1)
+    """
     if pred_adj.shape != true_adj.shape:
         raise ValueError("pred_adj and true_adj must have same shape")
     if pred_adj.ndim != 2 or pred_adj.shape[0] != pred_adj.shape[1]:
@@ -73,6 +206,41 @@ def confusion_counts(
 def precision_recall_f1(
     pred_adj: np.ndarray, true_adj: np.ndarray, exclude_self: bool
 ) -> tuple[float, float, float]:
+    """
+    Compute precision, recall, and F1-score for adjacency prediction.
+
+    Parameters
+    ----------
+
+    pred_adj:
+        Predicted adjacency with shape (N, N).
+
+    true_adj:
+        Ground-truth adjacency with shape (N, N).
+
+    exclude_self:
+        If True, ignore diagonal entries.
+
+    Returns
+    -------
+
+    (float, float, float)
+
+        (precision, recall, f1).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.graph.metrics import precision_recall_f1
+    >>> T = np.zeros((4, 4), dtype=np.int8)
+    >>> P = np.zeros((4, 4), dtype=np.int8)
+    >>> T[0, 1] = 1
+    >>> T[1, 2] = 1
+    >>> P[0, 1] = 1
+    >>> P[2, 3] = 1
+    >>> tuple(round(x, 6) for x in precision_recall_f1(P, T, True))
+    (0.5, 0.5, 0.5)
+    """
     tp, fp, fn, tn = confusion_counts(pred_adj, true_adj, exclude_self)
     prec = float(tp) / float(tp + fp) if (tp + fp) > 0 else 0.0
     rec = float(tp) / float(tp + fn) if (tp + fn) > 0 else 0.0

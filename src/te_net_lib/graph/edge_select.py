@@ -9,6 +9,72 @@ def select_fixed_density(
     exclude_self: bool,
     mode: str,
 ) -> np.ndarray:
+    """
+    Select a directed adjacency matrix by keeping a fixed fraction of highest-score edges.
+
+    This is a deterministic thresholding rule over a score matrix (typically a TE
+    coefficient matrix). The output adjacency is binary with entries in {0, 1}.
+
+    Parameters
+    ----------
+
+    scores:
+        Score matrix with shape (N, N). Larger values indicate stronger directed edges
+        i -> j at location [j, i] if you pass in TE coefficients with the library
+        convention beta[j, i] = i -> j.
+
+    density:
+        Fraction of eligible edges to keep, in [0, 1]. The number of selected edges is
+        floor(density * M), where M is the number of eligible positions (N*(N-1) if
+        `exclude_self=True`, else N*N).
+
+    exclude_self:
+        If True, disallow self edges by excluding the diagonal positions.
+
+    mode:
+
+    How to rank edges:
+
+    - "abs": rank by absolute value |score|
+    - "pos": rank by positive scores only (negative treated as -inf)
+    - "neg": rank by negative scores only, using -score as key (positive treated as -inf)
+
+    Returns
+    -------
+
+    numpy.ndarray
+
+        Binary adjacency matrix with shape (N, N) and dtype int8.
+
+    Raises
+    ------
+
+    ValueError
+
+        If shapes are invalid, density is out of range, or mode is invalid.
+
+    Notes
+    -----
+
+    Ties at the selection threshold are broken deterministically by dropping the
+    smallest keys among the tied set until exactly k edges remain.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.graph.edge_select import select_fixed_density
+    >>> S = np.zeros((4, 4), dtype=np.float64)
+    >>> S[0, 1] = 10.0
+    >>> S[2, 3] = -9.0
+    >>> A = select_fixed_density(S, 0.1, True, "abs")
+    >>> A.shape
+    (4, 4)
+    >>> int(np.diag(A).sum()) == 0
+    True
+    >>> Apos = select_fixed_density(S, 0.1, True, "pos")
+    >>> Apos[0, 1] == 1 and Apos[2, 3] == 0
+    True
+    """
     if scores.ndim != 2:
         raise ValueError("scores must be 2D")
     if scores.shape[0] != scores.shape[1]:

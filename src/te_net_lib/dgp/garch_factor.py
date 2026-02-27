@@ -16,6 +16,80 @@ def simulate_garch_factor(
     loading_scale: float,
     burnin: int,
 ) -> DgpSample:
+    """
+    Simulate a factor model with idiosyncratic GARCH(1,1) volatility per asset.
+
+    The simulated return is:
+        r_t = f_t B^T + eps_t
+
+    where:
+
+    - f_t is a k-dimensional standard normal factor
+    - B is an (N, k) loading matrix
+    - eps_t has asset-specific conditional variance following GARCH(1,1):
+        sigma^2_t = omega + alpha * eps^2_{t-1} + beta * sigma^2_{t-1}
+
+    Parameters
+    ----------
+
+    rng:
+        NumPy Generator used to draw loadings, factor series, and shocks.
+
+    N:
+        Number of assets/nodes.
+
+    T:
+        Number of returned time steps after burn-in.
+
+    k:
+        Number of factors (must be positive).
+
+    omega:
+        GARCH constant term (must be positive).
+
+    alpha:
+        GARCH ARCH parameter (must satisfy alpha >= 0).
+
+    beta:
+        GARCH GARCH parameter (must satisfy beta >= 0 and alpha + beta < 1).
+
+    loading_scale:
+        Standard deviation used to sample loadings B.
+
+    burnin:
+        Number of initial steps discarded.
+
+    Returns
+    -------
+
+    DgpSample
+
+    A sample with:
+
+    - returns: array with shape (T, N)
+    - true_adj: None (this DGP does not define a ground-truth directed graph)
+    - extras: dict containing "factors", "loadings", "sigma2", "eps", and "params"
+
+    Raises
+    ------
+
+    ValueError
+
+        If parameter constraints are violated.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from te_net_lib.dgp.garch_factor import simulate_garch_factor
+    >>> g = np.random.default_rng(0)
+    >>> out = simulate_garch_factor(g, 6, 100, 2, 0.05, 0.05, 0.9, 0.3, 10)
+    >>> out.returns.shape
+    (100, 6)
+    >>> out.extras["factors"].shape
+    (100, 2)
+    >>> out.true_adj is None
+    True
+    """
     if k <= 0:
         raise ValueError("k must be positive")
     if burnin < 0:
