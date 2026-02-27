@@ -77,3 +77,29 @@ ex-qs-o:
 
 ex-qs-prn:
     uv run python examples/quickstart_pipeline_raw_neutral.py
+
+BENCH_REPEATS := "4"
+BENCH_WARMUP := "1"
+BENCH_SEED := "0"
+
+bench:
+    just bench-gs && \
+    just bench-lp && \
+    just bench-lt && \
+    just bench-ot && \
+    just bench-pf
+
+bench-gs:
+    uv run python -m bench.bench_graph_select --repeats {{BENCH_REPEATS}} --warmup {{BENCH_WARMUP}} --seed {{BENCH_SEED}}
+
+bench-lp:
+    uv run python -m bench.bench_lasso_path --repeats {{BENCH_REPEATS}} --warmup {{BENCH_WARMUP}} --seed {{BENCH_SEED}}
+
+bench-lt:
+    uv run python -m bench.bench_lasso_te --repeats {{BENCH_REPEATS}} --warmup {{BENCH_WARMUP}} --seed {{BENCH_SEED}}
+
+bench-ot:
+	uv run python -m bench.bench_ols_te --repeats {{BENCH_REPEATS}} --warmup {{BENCH_WARMUP}} --seed {{BENCH_SEED}}
+	
+bench-pf:
+	uv run python -m bench.bench_preprocess_fn --repeats {{BENCH_REPEATS}} --warmup {{BENCH_WARMUP}} --seed {{BENCH_SEED}}
