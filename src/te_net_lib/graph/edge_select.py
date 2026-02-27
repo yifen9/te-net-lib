@@ -8,7 +8,8 @@ def select_fixed_density(
     density: float,
     exclude_self: bool,
     mode: str,
-) -> np.ndarray:
+    return_info: bool = False,
+) -> np.ndarray | tuple[np.ndarray, dict[str, float | int | str | bool]]:
     """
     Select a directed adjacency matrix by keeping a fixed fraction of highest-score edges.
 
@@ -46,6 +47,11 @@ def select_fixed_density(
 
         Binary adjacency matrix with shape (N, N) and dtype int8.
 
+        If return_info=True, returns (adj, info) where info includes:
+        - density_target, density_real
+        - k_target, k_selected
+        - mode, exclude_self
+
     Raises
     ------
 
@@ -58,22 +64,6 @@ def select_fixed_density(
 
     Ties at the selection threshold are broken deterministically by dropping the
     smallest keys among the tied set until exactly k edges remain.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from te_net_lib.graph.edge_select import select_fixed_density
-    >>> S = np.zeros((4, 4), dtype=np.float64)
-    >>> S[0, 1] = 10.0
-    >>> S[2, 3] = -9.0
-    >>> A = select_fixed_density(S, 0.1, True, "abs")
-    >>> A.shape
-    (4, 4)
-    >>> int(np.diag(A).sum()) == 0
-    True
-    >>> Apos = select_fixed_density(S, 0.1, True, "pos")
-    >>> Apos[0, 1] == 1 and Apos[2, 3] == 0
-    True
     """
     if scores.ndim != 2:
         raise ValueError("scores must be 2D")
@@ -106,10 +96,30 @@ def select_fixed_density(
 
     adj = np.zeros((N, N), dtype=np.int8)
     if k <= 0 or m == 0:
+        if return_info:
+            info = {
+                "density_target": float(density),
+                "density_real": 0.0,
+                "k_target": int(k),
+                "k_selected": 0,
+                "mode": mode,
+                "exclude_self": bool(exclude_self),
+            }
+            return adj, info
         return adj
 
     finite_mask = np.isfinite(key)
     if finite_mask.sum() == 0:
+        if return_info:
+            info = {
+                "density_target": float(density),
+                "density_real": 0.0,
+                "k_target": int(k),
+                "k_selected": 0,
+                "mode": mode,
+                "exclude_self": bool(exclude_self),
+            }
+            return adj, info
         return adj
 
     key2 = key[finite_mask]
@@ -118,6 +128,18 @@ def select_fixed_density(
     if k >= key2.size:
         adj_flat = adj.reshape(-1)
         adj_flat[idx2] = 1
+        k_sel = int(key2.size)
+        dens_real = float(k_sel) / float(m) if m > 0 else 0.0
+        if return_info:
+            info = {
+                "density_target": float(density),
+                "density_real": float(dens_real),
+                "k_target": int(k),
+                "k_selected": int(k_sel),
+                "mode": mode,
+                "exclude_self": bool(exclude_self),
+            }
+            return adj, info
         return adj
 
     thresh = np.partition(key2, -k)[-k]
@@ -130,4 +152,16 @@ def select_fixed_density(
 
     adj_flat = adj.reshape(-1)
     adj_flat[idx2[pick]] = 1
+    k_sel = int(pick.sum())
+    dens_real = float(k_sel) / float(m) if m > 0 else 0.0
+    if return_info:
+        info = {
+            "density_target": float(density),
+            "density_real": float(dens_real),
+            "k_target": int(k),
+            "k_selected": int(k_sel),
+            "mode": mode,
+            "exclude_self": bool(exclude_self),
+        }
+        return adj, info
     return adj
