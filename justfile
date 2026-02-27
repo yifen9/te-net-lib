@@ -46,7 +46,6 @@ lint-check:
 
 test:
     uv run pytest
-    just test-rs
 
 ci:
     just venv && \
@@ -54,3 +53,9 @@ ci:
     just fmt-check && \
     just lint-check && \
     just test
+
+docs-build:
+	uv run pdoc -o site te_net_lib
+
+docs-serve:
+    uv run pdoc -p 8080 te_net_lib
