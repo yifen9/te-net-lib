@@ -59,3 +59,21 @@ docs-build:
 
 docs-serve:
     uv run pdoc --math -p 8080 te_net_lib
+
+ex-qs:
+    just ex-qs-lp && \
+    just ex-qs-l && \
+    just ex-qs-o && \
+    just ex-qs-prn
+
+ex-qs-lp:
+    uv run python examples/quickstart_lasso_path.py
+
+ex-qs-l:
+    uv run python examples/quickstart_lasso.py
+
+ex-qs-o:
+    uv run python examples/quickstart_ols.py
+
+ex-qs-prn:
+    uv run python examples/quickstart_pipeline_raw_neutral.py
