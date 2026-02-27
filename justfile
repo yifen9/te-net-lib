@@ -78,7 +78,7 @@ ex-qs-o:
 ex-qs-prn:
     uv run python examples/quickstart_pipeline_raw_neutral.py
 
-BENCH_REPEATS := "4"
+BENCH_REPEATS := "3"
 BENCH_WARMUP := "1"
 BENCH_SEED := "0"
 
